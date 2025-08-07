@@ -1,9 +1,11 @@
 #! /usr/bin/env python3
 
 import functools
+import json
 import os
 from pathlib import Path
 
+import numpy as np
 import torch
 import transformers
 
@@ -15,23 +17,13 @@ SAVED_PT = Path("mistral-embedding.pt")
 
 @functools.cache
 def get_model():
-    # Remove COLAB_GPU restriction for CI builds
     print("Loading Mistral-7B model...")
-    return transformers.AutoModelForCausalLM.from_pretrained(
-        MODEL,
-        torch_dtype=torch.float32,  # Use float32 for consistency
-        device_map="cpu",  # Force CPU usage in CI
-        trust_remote_code=True
-    )
+    return transformers.AutoModelForCausalLM.from_pretrained(MODEL)
 
 @functools.cache
 def get_tokenizer():
-    # Remove COLAB_GPU restriction for CI builds
     print("Loading Mistral-7B tokenizer...")
-    return transformers.AutoTokenizer.from_pretrained(
-        MODEL,
-        trust_remote_code=True
-    )
+    return transformers.AutoTokenizer.from_pretrained(MODEL)
 
 @functools.cache
 def get_embedding():
@@ -86,9 +78,6 @@ def get_all():
     return rv
 
 def main():
-    import json
-    import numpy as np
-    
     print("Starting embedding extraction process...")
     all_dict = get_all()
     
@@ -99,8 +88,8 @@ def main():
     special_tokens = all_dict["special_tokens"]
     space_string = all_dict["space_string"]
     
-    # Convert embedding to numpy float32 for compact storage
-    print("Converting embeddings to numpy format...")
+    # Convert embedding to numpy float32 for storage
+    print("Converting embeddings to float32...")
     embedding_np = embedding.detach().cpu().numpy().astype(np.float32)
     
     # Create reverse vocab mapping (token_id -> string)
@@ -135,6 +124,7 @@ def main():
     print(f"Original vocab size: {len(vocab)}")
     print(f"Filtered vocab size: {len(filtered_vocab)}")
     print(f"Embedding shape: {filtered_embeddings.shape}")
+    print(f"Data type: float32")
     
     # Save embeddings as binary file (can be loaded as ArrayBuffer in JS)
     print("Saving embedding files...")
@@ -149,6 +139,7 @@ def main():
         "vocab": filtered_vocab,
         "vocab_size": len(filtered_vocab),
         "embedding_dim": filtered_embeddings.shape[1],
+        "dtype": "float32",
         "space_string": space_string,
         "special_tokens": special_tokens,
         "original_model": MODEL

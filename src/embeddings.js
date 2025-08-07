@@ -27,8 +27,8 @@ export class EmbeddingEngine {
       const embeddingsResponse = await fetch('./embeddings.bin');
       const arrayBuffer = await embeddingsResponse.arrayBuffer();
       
-      // Convert to Float32Array
-      const float32Data = new Float32Array(arrayBuffer);
+      // Convert to Float32Array (embeddings are stored as float32)
+      const typedData = new Float32Array(arrayBuffer);
       
       // Reshape into 2D array [vocab_size, embedding_dim]
       const vocabSize = this.metadata.vocab_size;
@@ -38,11 +38,11 @@ export class EmbeddingEngine {
       for (let i = 0; i < vocabSize; i++) {
         const start = i * embeddingDim;
         const end = start + embeddingDim;
-        this.embeddings.push(float32Data.slice(start, end));
+        this.embeddings.push(typedData.slice(start, end));
       }
 
       this.isLoaded = true;
-      console.log(`Loaded ${vocabSize} embeddings of dimension ${embeddingDim}`);
+      console.log(`Loaded ${vocabSize} embeddings of dimension ${embeddingDim} (float32)`);
     } catch (error) {
       console.error('Failed to load embeddings:', error);
       throw error;
