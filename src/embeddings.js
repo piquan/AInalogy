@@ -14,6 +14,7 @@ function bf16ToFloat32(bf16Uint16) {
 export class EmbeddingEngine {
   constructor() {
     this.embeddings = null;
+    this.normalizedEmbeddings = null; // Pre-normalized for fast cosine similarity
     this.vocab = null;
     this.reverseVocab = null;
     this.metadata = null;
@@ -86,8 +87,16 @@ export class EmbeddingEngine {
         this.embeddings.push(typedData.slice(start, end));
       }
 
+      // Pre-normalize all embeddings for fast dot-product similarity
+      console.log('Normalizing embeddings for fast similarity calculation...');
+      this.normalizedEmbeddings = [];
+      for (let i = 0; i < vocabSize; i++) {
+        this.normalizedEmbeddings.push(this.normalizeVector(this.embeddings[i]));
+      }
+
       this.isLoaded = true;
       console.log(`Loaded ${vocabSize} embeddings of dimension ${embeddingDim} (${this.metadata.dtype})`);
+      console.log('Pre-normalized embeddings for fast similarity calculation');
     } catch (error) {
       console.error('Failed to load embeddings:', error);
       throw error;
@@ -116,6 +125,36 @@ export class EmbeddingEngine {
     }
 
     return this.embeddings[tokenId];
+  }
+
+  // Normalize a vector to unit length
+  normalizeVector(vector) {
+    let norm = 0;
+    for (let i = 0; i < vector.length; i++) {
+      norm += vector[i] * vector[i];
+    }
+    norm = Math.sqrt(norm);
+    
+    if (norm === 0) return vector; // Avoid division by zero
+    
+    const normalized = new Float32Array(vector.length);
+    for (let i = 0; i < vector.length; i++) {
+      normalized[i] = vector[i] / norm;
+    }
+    return normalized;
+  }
+
+  // Compute dot product (for normalized vectors, this equals cosine similarity)
+  dotProduct(a, b) {
+    if (a.length !== b.length) {
+      throw new Error('Vectors must have same length');
+    }
+
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+      result += a[i] * b[i];
+    }
+    return result;
   }
 
   // Compute cosine similarity between two vectors
@@ -188,9 +227,10 @@ export class EmbeddingEngine {
       };
     }
 
-    // Compute target vector: C + (B - A)
+    // Compute target vector: C + (B - A), then normalize it
     const diff = this.subtractVectors(embB, embA);
     const target = this.addVectors(embC, diff);
+    const normalizedTarget = this.normalizeVector(target);
 
     // Generate all variants of input tokens to exclude from results
     const inputVariants = new Set();
@@ -201,7 +241,7 @@ export class EmbeddingEngine {
       }
     }
 
-    // Find most similar tokens
+    // Find most similar tokens using fast dot product with normalized embeddings
     const similarities = [];
     for (const [token, id] of Object.entries(this.vocab)) {
       // Skip input tokens and their variants
@@ -209,8 +249,8 @@ export class EmbeddingEngine {
         continue;
       }
 
-      const embedding = this.embeddings[id];
-      const similarity = this.cosineSimilarity(target, embedding);
+      const normalizedEmbedding = this.normalizedEmbeddings[id];
+      const similarity = this.dotProduct(normalizedTarget, normalizedEmbedding);
       similarities.push({ token, similarity });
     }
 
@@ -219,7 +259,7 @@ export class EmbeddingEngine {
     
     return {
       results: similarities.slice(0, topK),
-      targetVector: target
+      targetVector: normalizedTarget
     };
   }
 
