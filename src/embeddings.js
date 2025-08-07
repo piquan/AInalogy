@@ -209,12 +209,12 @@ export class EmbeddingEngine {
           matches.set(key, {
             token,
             display: cleanToken || token,
-            priority: this.getMatchPriority(cleanToken, prefix, normalizedPrefix)
+            priority: this.getMatchPriority(cleanToken, prefix, normalizedPrefix, token)
           });
         } else {
           // If we already have this word, prefer exact case match
           const existing = matches.get(key);
-          const newPriority = this.getMatchPriority(cleanToken, prefix, normalizedPrefix);
+          const newPriority = this.getMatchPriority(cleanToken, prefix, normalizedPrefix, token);
           if (newPriority < existing.priority) {
             matches.set(key, {
               token,
@@ -237,21 +237,32 @@ export class EmbeddingEngine {
   }
 
   // Helper function to determine match priority
-  getMatchPriority(cleanToken, originalPrefix, normalizedPrefix) {
+  getMatchPriority(cleanToken, originalPrefix, normalizedPrefix, originalToken) {
+    // Prefer space-prefixed tokens (standalone words)
+    const hasSpacePrefix = originalToken.startsWith(this.metadata.space_string);
+    
     // Exact case match gets highest priority
-    if (cleanToken === originalPrefix) return 0;
+    if (cleanToken === originalPrefix) {
+      return hasSpacePrefix ? 0 : 1;
+    }
     
     // Exact case match but longer
-    if (cleanToken.startsWith(originalPrefix)) return 1;
+    if (cleanToken.startsWith(originalPrefix)) {
+      return hasSpacePrefix ? 2 : 3;
+    }
     
     // Case-insensitive exact match
-    if (cleanToken.toLowerCase() === normalizedPrefix) return 2;
+    if (cleanToken.toLowerCase() === normalizedPrefix) {
+      return hasSpacePrefix ? 4 : 5;
+    }
     
     // Case-insensitive prefix match
-    if (cleanToken.toLowerCase().startsWith(normalizedPrefix)) return 3;
+    if (cleanToken.toLowerCase().startsWith(normalizedPrefix)) {
+      return hasSpacePrefix ? 6 : 7;
+    }
     
     // Everything else
-    return 4;
+    return hasSpacePrefix ? 8 : 9;
   }
 
   // Clean token for display (remove space markers)
