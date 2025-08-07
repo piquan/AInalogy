@@ -1,0 +1,229 @@
+// Utility functions for working with embeddings
+
+export class EmbeddingEngine {
+  constructor() {
+    this.embeddings = null;
+    this.vocab = null;
+    this.reverseVocab = null;
+    this.metadata = null;
+    this.isLoaded = false;
+  }
+
+  async loadEmbeddings() {
+    if (this.isLoaded) return;
+
+    try {
+      // Load metadata (use relative path to work with Vite's base configuration)
+      const metadataResponse = await fetch('./metadata.json');
+      this.metadata = await metadataResponse.json();
+      this.vocab = this.metadata.vocab;
+      
+      // Create reverse vocab lookup
+      this.reverseVocab = Object.fromEntries(
+        Object.entries(this.vocab).map(([token, id]) => [id, token])
+      );
+
+      // Load embeddings binary data
+      const embeddingsResponse = await fetch('./embeddings.bin');
+      const arrayBuffer = await embeddingsResponse.arrayBuffer();
+      
+      // Convert to Float32Array
+      const float32Data = new Float32Array(arrayBuffer);
+      
+      // Reshape into 2D array [vocab_size, embedding_dim]
+      const vocabSize = this.metadata.vocab_size;
+      const embeddingDim = this.metadata.embedding_dim;
+      
+      this.embeddings = [];
+      for (let i = 0; i < vocabSize; i++) {
+        const start = i * embeddingDim;
+        const end = start + embeddingDim;
+        this.embeddings.push(float32Data.slice(start, end));
+      }
+
+      this.isLoaded = true;
+      console.log(`Loaded ${vocabSize} embeddings of dimension ${embeddingDim}`);
+    } catch (error) {
+      console.error('Failed to load embeddings:', error);
+      throw error;
+    }
+  }
+
+  // Get embedding vector for a token
+  getEmbedding(token) {
+    if (!this.isLoaded) {
+      throw new Error('Embeddings not loaded yet');
+    }
+
+    const tokenId = this.vocab[token];
+    if (tokenId === undefined) {
+      return null;
+    }
+
+    return this.embeddings[tokenId];
+  }
+
+  // Compute cosine similarity between two vectors
+  cosineSimilarity(a, b) {
+    if (a.length !== b.length) {
+      throw new Error('Vectors must have same length');
+    }
+
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+
+    normA = Math.sqrt(normA);
+    normB = Math.sqrt(normB);
+
+    if (normA === 0 || normB === 0) {
+      return 0;
+    }
+
+    return dotProduct / (normA * normB);
+  }
+
+  // Add two vectors
+  addVectors(a, b) {
+    if (a.length !== b.length) {
+      throw new Error('Vectors must have same length');
+    }
+
+    const result = new Float32Array(a.length);
+    for (let i = 0; i < a.length; i++) {
+      result[i] = a[i] + b[i];
+    }
+    return result;
+  }
+
+  // Subtract two vectors
+  subtractVectors(a, b) {
+    if (a.length !== b.length) {
+      throw new Error('Vectors must have same length');
+    }
+
+    const result = new Float32Array(a.length);
+    for (let i = 0; i < a.length; i++) {
+      result[i] = a[i] - b[i];
+    }
+    return result;
+  }
+
+  // Perform word analogy: a is to b as c is to ?
+  // Returns the token most similar to (c + (b - a))
+  performAnalogy(tokenA, tokenB, tokenC, topK = 10) {
+    const embA = this.getEmbedding(tokenA);
+    const embB = this.getEmbedding(tokenB);
+    const embC = this.getEmbedding(tokenC);
+
+    if (!embA || !embB || !embC) {
+      return {
+        error: 'One or more tokens not found in vocabulary',
+        missingTokens: [
+          !embA ? tokenA : null,
+          !embB ? tokenB : null,
+          !embC ? tokenC : null
+        ].filter(Boolean)
+      };
+    }
+
+    // Compute target vector: C + (B - A)
+    const diff = this.subtractVectors(embB, embA);
+    const target = this.addVectors(embC, diff);
+
+    // Find most similar tokens
+    const similarities = [];
+    const inputTokens = new Set([tokenA, tokenB, tokenC]);
+    
+    // Also exclude case variants and cleaned versions of input tokens
+    const inputVariants = new Set();
+    const spaceString = this.metadata.space_string;
+    
+    for (const token of [tokenA, tokenB, tokenC]) {
+      const cleaned = this.cleanToken(token);
+      inputVariants.add(token);
+      inputVariants.add(cleaned);
+      inputVariants.add(cleaned.toLowerCase());
+      inputVariants.add(cleaned.toUpperCase());
+      inputVariants.add(cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase());
+      
+      // Add versions with and without space prefix
+      inputVariants.add(spaceString + cleaned);
+      inputVariants.add(spaceString + cleaned.toLowerCase());
+      inputVariants.add(spaceString + cleaned.toUpperCase());
+      inputVariants.add(spaceString + cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase());
+    }
+
+    for (const [token, id] of Object.entries(this.vocab)) {
+      // Skip input tokens and their variants
+      const cleanedToken = this.cleanToken(token);
+      if (inputVariants.has(token) || inputVariants.has(cleanedToken) || 
+          inputVariants.has(cleanedToken.toLowerCase()) ||
+          inputVariants.has(cleanedToken.toUpperCase()) ||
+          inputVariants.has(cleanedToken.charAt(0).toUpperCase() + cleanedToken.slice(1).toLowerCase())) {
+        continue;
+      }
+
+      const embedding = this.embeddings[id];
+      const similarity = this.cosineSimilarity(target, embedding);
+      similarities.push({ token, similarity });
+    }
+
+    // Sort by similarity and return top K
+    similarities.sort((a, b) => b.similarity - a.similarity);
+    
+    return {
+      results: similarities.slice(0, topK),
+      targetVector: target
+    };
+  }
+
+  // Get all tokens that start with a prefix (for autocomplete)
+  getTokensWithPrefix(prefix, maxResults = 50) {
+    if (!this.isLoaded || !prefix) return [];
+
+    const normalizedPrefix = prefix.toLowerCase();
+    const spaceString = this.metadata.space_string;
+    
+    const matches = [];
+    for (const token of Object.keys(this.vocab)) {
+      const cleanToken = token.replace(spaceString, '');
+      
+      // Try matching both with and without space prefix
+      if (cleanToken.toLowerCase().startsWith(normalizedPrefix) ||
+          token.toLowerCase().startsWith(normalizedPrefix) ||
+          token.toLowerCase().startsWith(spaceString + normalizedPrefix)) {
+        matches.push({
+          token,
+          display: cleanToken || token,
+          // Prefer exact matches and common words
+          priority: cleanToken.toLowerCase() === normalizedPrefix ? 0 :
+                   cleanToken.toLowerCase().startsWith(normalizedPrefix) ? 1 : 2
+        });
+      }
+    }
+
+    return matches
+      .sort((a, b) => {
+        // Sort by priority first, then by length
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        return a.display.length - b.display.length;
+      })
+      .slice(0, maxResults);
+  }
+
+  // Clean token for display (remove space markers)
+  cleanToken(token) {
+    if (!this.metadata) return token;
+    return token.replace(this.metadata.space_string, '');
+  }
+}
+
+// Create a singleton instance
+export const embeddingEngine = new EmbeddingEngine();
