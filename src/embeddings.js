@@ -7,11 +7,35 @@ export class EmbeddingEngine {
     this.reverseVocab = null;
     this.metadata = null;
     this.isLoaded = false;
+    this.loadingPromise = null; // Cache the loading promise
   }
 
   async loadEmbeddings() {
-    if (this.isLoaded) return;
+    // If already loaded, return immediately
+    if (this.isLoaded) {
+      console.log('Embeddings already loaded, skipping duplicate load');
+      return;
+    }
+    
+    // If currently loading, return the existing promise
+    if (this.loadingPromise) {
+      console.log('Embeddings already loading, waiting for existing promise');
+      return this.loadingPromise;
+    }
 
+    // Start loading and cache the promise
+    console.log('Starting embeddings load...');
+    this.loadingPromise = this._doLoadEmbeddings();
+    
+    try {
+      await this.loadingPromise;
+    } finally {
+      // Clear the promise when done (success or failure)
+      this.loadingPromise = null;
+    }
+  }
+
+  async _doLoadEmbeddings() {
     try {
       // Load metadata (use relative path to work with Vite's base configuration)
       const metadataResponse = await fetch('./metadata.json');
