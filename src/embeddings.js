@@ -1,5 +1,16 @@
 // Utility functions for working with embeddings
 
+// BF16 to Float32 conversion utilities
+function bf16ToFloat32(bf16Uint16) {
+  // BF16 is stored as uint16, but represents the top 16 bits of a float32
+  // To convert back: shift left by 16 bits to get a valid float32
+  const uint32 = new Uint32Array(bf16Uint16.length);
+  for (let i = 0; i < bf16Uint16.length; i++) {
+    uint32[i] = bf16Uint16[i] << 16;
+  }
+  return new Float32Array(uint32.buffer);
+}
+
 export class EmbeddingEngine {
   constructor() {
     this.embeddings = null;
@@ -51,8 +62,18 @@ export class EmbeddingEngine {
       const embeddingsResponse = await fetch('./embeddings.bin');
       const arrayBuffer = await embeddingsResponse.arrayBuffer();
       
-      // Convert to Float32Array (embeddings are stored as float32)
-      const typedData = new Float32Array(arrayBuffer);
+      // Check data type from metadata
+      let typedData;
+      if (this.metadata.dtype === 'bf16') {
+        // Load as uint16 (BF16 format) and convert to float32
+        const uint16Data = new Uint16Array(arrayBuffer);
+        typedData = bf16ToFloat32(uint16Data);
+        console.log('Loaded BF16 embeddings, converted to float32');
+      } else {
+        // Default: load as float32
+        typedData = new Float32Array(arrayBuffer);
+        console.log('Loaded float32 embeddings');
+      }
       
       // Reshape into 2D array [vocab_size, embedding_dim]
       const vocabSize = this.metadata.vocab_size;
@@ -66,7 +87,7 @@ export class EmbeddingEngine {
       }
 
       this.isLoaded = true;
-      console.log(`Loaded ${vocabSize} embeddings of dimension ${embeddingDim} (float32)`);
+      console.log(`Loaded ${vocabSize} embeddings of dimension ${embeddingDim} (${this.metadata.dtype})`);
     } catch (error) {
       console.error('Failed to load embeddings:', error);
       throw error;
