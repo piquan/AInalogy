@@ -106,7 +106,7 @@ Try these classic analogies:
 
 - Uses Mistral-7B embeddings (4096-dimensional vectors)
 - Pre-built model checkpoint (`mistral-embedding.pt`) included in repository (~500MB)
-- Embeddings are stored as binary Float32 data for efficient loading
+- Embeddings are stored as BF16 binary data for efficient loading (235MB)
 - Cosine similarity for finding closest matches
 - React with React Router Data API
 - Styled with Tailwind CSS and daisyUI

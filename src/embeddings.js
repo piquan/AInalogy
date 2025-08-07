@@ -100,7 +100,17 @@ export class EmbeddingEngine {
       throw new Error('Embeddings not loaded yet');
     }
 
-    const tokenId = this.vocab[token];
+    // First try direct lookup
+    let tokenId = this.vocab[token];
+    
+    // If not found, try to find the best match
+    if (tokenId === undefined) {
+      const bestMatch = this.findBestTokenMatch(token);
+      if (bestMatch) {
+        tokenId = this.vocab[bestMatch];
+      }
+    }
+    
     if (tokenId === undefined) {
       return null;
     }
@@ -182,36 +192,20 @@ export class EmbeddingEngine {
     const diff = this.subtractVectors(embB, embA);
     const target = this.addVectors(embC, diff);
 
-    // Find most similar tokens
-    const similarities = [];
-    const inputTokens = new Set([tokenA, tokenB, tokenC]);
-    
-    // Also exclude case variants and cleaned versions of input tokens
+    // Generate all variants of input tokens to exclude from results
     const inputVariants = new Set();
-    const spaceString = this.metadata.space_string;
-    
     for (const token of [tokenA, tokenB, tokenC]) {
-      const cleaned = this.cleanToken(token);
-      inputVariants.add(token);
-      inputVariants.add(cleaned);
-      inputVariants.add(cleaned.toLowerCase());
-      inputVariants.add(cleaned.toUpperCase());
-      inputVariants.add(cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase());
-      
-      // Add versions with and without space prefix
-      inputVariants.add(spaceString + cleaned);
-      inputVariants.add(spaceString + cleaned.toLowerCase());
-      inputVariants.add(spaceString + cleaned.toUpperCase());
-      inputVariants.add(spaceString + cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase());
+      const variants = this.generateTokenVariants(token);
+      for (const variant of variants) {
+        inputVariants.add(variant);
+      }
     }
 
+    // Find most similar tokens
+    const similarities = [];
     for (const [token, id] of Object.entries(this.vocab)) {
       // Skip input tokens and their variants
-      const cleanedToken = this.cleanToken(token);
-      if (inputVariants.has(token) || inputVariants.has(cleanedToken) || 
-          inputVariants.has(cleanedToken.toLowerCase()) ||
-          inputVariants.has(cleanedToken.toUpperCase()) ||
-          inputVariants.has(cleanedToken.charAt(0).toUpperCase() + cleanedToken.slice(1).toLowerCase())) {
+      if (inputVariants.has(token)) {
         continue;
       }
 
@@ -235,38 +229,36 @@ export class EmbeddingEngine {
 
     const normalizedPrefix = prefix.toLowerCase();
     const spaceString = this.metadata.space_string;
-    
     const matches = new Map(); // Use Map to avoid duplicates based on display text
     
     for (const token of Object.keys(this.vocab)) {
-      const cleanToken = token.replace(spaceString, '');
+      const cleanToken = this.cleanToken(token);
       const cleanLower = cleanToken.toLowerCase();
       
-      // Try matching both with and without space prefix
-      if (cleanLower.startsWith(normalizedPrefix) ||
-          token.toLowerCase().startsWith(normalizedPrefix) ||
-          token.toLowerCase().startsWith(spaceString + normalizedPrefix)) {
+      // Check if this token matches our prefix
+      const matchesPrefix = cleanLower.startsWith(normalizedPrefix) ||
+                           token.toLowerCase().startsWith(normalizedPrefix) ||
+                           token.toLowerCase().startsWith(spaceString + normalizedPrefix);
+      
+      if (matchesPrefix) {
+        const key = cleanLower; // Use cleaned token as key to avoid duplicates
+        const hasSpacePrefix = token.startsWith(spaceString);
         
-        // Use cleanToken as key to avoid duplicates, but prefer exact case match
-        const key = cleanLower;
+        // Calculate priority: prefer space-prefixed tokens and exact matches
+        let priority = hasSpacePrefix ? 0 : 10; // Base priority for space-prefixed vs not
         
-        if (!matches.has(key)) {
+        // Bonus for exact case match
+        if (cleanToken === prefix) priority += 0;
+        else if (cleanToken.startsWith(prefix)) priority += 1;
+        else if (cleanLower === normalizedPrefix) priority += 2;
+        else priority += 3;
+        
+        if (!matches.has(key) || matches.get(key).priority > priority) {
           matches.set(key, {
             token,
             display: cleanToken || token,
-            priority: this.getMatchPriority(cleanToken, prefix, normalizedPrefix, token)
+            priority
           });
-        } else {
-          // If we already have this word, prefer exact case match
-          const existing = matches.get(key);
-          const newPriority = this.getMatchPriority(cleanToken, prefix, normalizedPrefix, token);
-          if (newPriority < existing.priority) {
-            matches.set(key, {
-              token,
-              display: cleanToken || token,
-              priority: newPriority
-            });
-          }
         }
       }
     }
@@ -281,39 +273,64 @@ export class EmbeddingEngine {
       .slice(0, maxResults);
   }
 
-  // Helper function to determine match priority
-  getMatchPriority(cleanToken, originalPrefix, normalizedPrefix, originalToken) {
-    // Prefer space-prefixed tokens (standalone words)
-    const hasSpacePrefix = originalToken.startsWith(this.metadata.space_string);
-    
-    // Exact case match gets highest priority
-    if (cleanToken === originalPrefix) {
-      return hasSpacePrefix ? 0 : 1;
-    }
-    
-    // Exact case match but longer
-    if (cleanToken.startsWith(originalPrefix)) {
-      return hasSpacePrefix ? 2 : 3;
-    }
-    
-    // Case-insensitive exact match
-    if (cleanToken.toLowerCase() === normalizedPrefix) {
-      return hasSpacePrefix ? 4 : 5;
-    }
-    
-    // Case-insensitive prefix match
-    if (cleanToken.toLowerCase().startsWith(normalizedPrefix)) {
-      return hasSpacePrefix ? 6 : 7;
-    }
-    
-    // Everything else
-    return hasSpacePrefix ? 8 : 9;
-  }
-
   // Clean token for display (remove space markers)
   cleanToken(token) {
     if (!this.metadata) return token;
     return token.replace(this.metadata.space_string, '');
+  }
+
+  // Generate all possible variants of a token for matching
+  generateTokenVariants(token) {
+    const variants = new Set();
+    const spaceString = this.metadata.space_string;
+    const cleaned = this.cleanToken(token);
+    
+    // Add the original token
+    variants.add(token);
+    
+    // Add cleaned version
+    variants.add(cleaned);
+    
+    // Add case variations of cleaned token
+    variants.add(cleaned.toLowerCase());
+    variants.add(cleaned.toUpperCase());
+    variants.add(cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase());
+    
+    // Add versions with space prefix
+    variants.add(spaceString + cleaned);
+    variants.add(spaceString + cleaned.toLowerCase());
+    variants.add(spaceString + cleaned.toUpperCase());
+    variants.add(spaceString + cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase());
+    
+    return variants;
+  }
+
+  // Find the best token match for a given word, preferring space-prefixed versions
+  findBestTokenMatch(word) {
+    const spaceString = this.metadata.space_string;
+    const candidates = [];
+    
+    // Look for exact matches first
+    const variants = this.generateTokenVariants(word);
+    for (const variant of variants) {
+      if (this.vocab.hasOwnProperty(variant)) {
+        const hasSpacePrefix = variant.startsWith(spaceString);
+        candidates.push({
+          token: variant,
+          priority: hasSpacePrefix ? 0 : 1, // Prefer space-prefixed
+          isExact: true
+        });
+      }
+    }
+    
+    // If we found exact matches, return the best one
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => a.priority - b.priority);
+      return candidates[0].token;
+    }
+    
+    // No exact match found
+    return null;
   }
 }
 
