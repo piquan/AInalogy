@@ -13,53 +13,87 @@ A simple webapp to demonstrate word embedding vector arithmetic using Mistral-7B
 ## How it works
 
 The app performs vector arithmetic on word embeddings:
+
 1. Takes three input words (A, B, C)
 2. Computes: `embedding(C) + (embedding(B) - embedding(A))`
 3. Finds the vocabulary word with the highest cosine similarity to this result
 
 ## Setup
 
-1. **Generate embeddings** (requires access to Mistral-7B model):
-   ```bash
-   # Set your Hugging Face token (get one at https://huggingface.co/settings/tokens)
-   export HF_TOKEN=your_token_here
-   python fetch-embedding.py
-   ```
-   This creates `public/embeddings.bin` and `public/metadata.json`
+### For Development
 
-2. **Install dependencies**:
+1. **Set up Python environment**:
+
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. **Build embeddings data**:
+
+   ```bash
+   venv/bin/python fetch-embedding.py
+   ```
+
+   This creates `public/embeddings.bin` and `public/metadata.json` from the pre-built `mistral-embedding.pt`
+
+3. **Install dependencies**:
+
    ```bash
    npm install
    ```
 
-3. **Run development server**:
+4. **Run development server**:
+
    ```bash
    npm run dev
    ```
 
-4. **Build for production**:
+5. **Build for production**:
+
    ```bash
    npm run build
    ```
+
+### For Model Checkpoint Generation (Advanced)
+
+The `mistral-embedding.pt` file is pre-built and included in the repository. If you need to regenerate it:
+
+**⚠️ Warning**: This requires ~25GB of RAM and a Hugging Face token.
+
+```bash
+# Remove the existing checkpoint to force regeneration
+rm mistral-embedding.pt
+
+# Set your Hugging Face token
+export HF_TOKEN=your_token_here
+
+# This will download Mistral-7B and extract embeddings
+python fetch-embedding.py
+```
 
 ## GitHub Pages Deployment
 
 This project includes a GitHub Actions workflow for automatic deployment to GitHub Pages.
 
 **Setup:**
-1. In your GitHub repository, go to Settings > Secrets and variables > Actions
-2. Add a new repository secret named `HF_TOKEN` with your Hugging Face token
-3. Enable GitHub Pages in Settings > Pages, set source to "GitHub Actions"
-4. Push to main branch to trigger deployment
+
+1. Enable GitHub Pages in Settings > Pages, set source to "GitHub Actions"
+2. Push to main branch to trigger deployment
 
 The workflow will automatically:
-- Cache the Mistral model for faster builds
-- Generate embeddings using your HF token
+
+- Use the pre-built model checkpoint (`mistral-embedding.pt`)
+- Generate embeddings from the checkpoint
 - Build and deploy the React app
+
+**Note**: No Hugging Face token is required for deployment since the model checkpoint is included in the repository.
 
 ## Examples
 
 Try these classic analogies:
+
 - man : woman :: king : ? → queen
 - Paris : France :: London : ? → England  
 - good : better :: bad : ? → worse
@@ -68,6 +102,7 @@ Try these classic analogies:
 ## Technical Details
 
 - Uses Mistral-7B embeddings (4096-dimensional vectors)
+- Pre-built model checkpoint (`mistral-embedding.pt`) included in repository (~500MB)
 - Embeddings are stored as binary Float32 data for efficient loading
 - Cosine similarity for finding closest matches
 - React with React Router Data API
