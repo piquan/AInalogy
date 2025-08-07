@@ -1,5 +1,8 @@
 # AInalogy
 
+[![Live Demo](https://img.shields.io/badge/GitHub%20Pages-Live%20Demo-blue?style=for-the-badge&logo=github)](https://piquan.github.io/AInalogy/)
+[![Deploy to GitHub Pages](https://github.com/piquan/AInalogy/actions/workflows/deploy.yml/badge.svg)](https://github.com/piquan/AInalogy/actions/workflows/deploy.yml)
+
 A simple webapp to demonstrate word embedding vector arithmetic using Mistral-7B embeddings.
 
 ## Features
