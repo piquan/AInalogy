@@ -88,7 +88,7 @@ const TokenInput = ({ value, onChange, placeholder, onFocus, onBlur, disabled = 
       <input
         ref={inputRef}
         type="text"
-        className="input input-bordered w-full"
+        className="input input-bordered w-full placeholder:text-base-content/40"
         value={embeddingEngine.cleanToken(value) || ''}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
@@ -173,8 +173,8 @@ const AnalogyForm = ({ onSubmit }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Analogy inputs */}
-          <div className="grid grid-cols-5 gap-2 items-center">
-            <div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
               <TokenInput
                 value={tokenA}
                 onChange={setTokenA}
@@ -182,9 +182,9 @@ const AnalogyForm = ({ onSubmit }) => {
               />
             </div>
             
-            <div className="text-center text-lg font-bold">:</div>
+            <div className="text-lg font-bold text-base-content/70 px-1">:</div>
             
-            <div>
+            <div className="flex-1">
               <TokenInput
                 value={tokenB}
                 onChange={setTokenB}
@@ -192,9 +192,9 @@ const AnalogyForm = ({ onSubmit }) => {
               />
             </div>
             
-            <div className="text-center text-lg font-bold">::</div>
+            <div className="text-lg font-bold text-base-content/70 px-1">::</div>
             
-            <div>
+            <div className="flex-1">
               <TokenInput
                 value={tokenC}
                 onChange={setTokenC}

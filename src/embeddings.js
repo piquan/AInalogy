@@ -191,31 +191,67 @@ export class EmbeddingEngine {
     const normalizedPrefix = prefix.toLowerCase();
     const spaceString = this.metadata.space_string;
     
-    const matches = [];
+    const matches = new Map(); // Use Map to avoid duplicates based on display text
+    
     for (const token of Object.keys(this.vocab)) {
       const cleanToken = token.replace(spaceString, '');
+      const cleanLower = cleanToken.toLowerCase();
       
       // Try matching both with and without space prefix
-      if (cleanToken.toLowerCase().startsWith(normalizedPrefix) ||
+      if (cleanLower.startsWith(normalizedPrefix) ||
           token.toLowerCase().startsWith(normalizedPrefix) ||
           token.toLowerCase().startsWith(spaceString + normalizedPrefix)) {
-        matches.push({
-          token,
-          display: cleanToken || token,
-          // Prefer exact matches and common words
-          priority: cleanToken.toLowerCase() === normalizedPrefix ? 0 :
-                   cleanToken.toLowerCase().startsWith(normalizedPrefix) ? 1 : 2
-        });
+        
+        // Use cleanToken as key to avoid duplicates, but prefer exact case match
+        const key = cleanLower;
+        
+        if (!matches.has(key)) {
+          matches.set(key, {
+            token,
+            display: cleanToken || token,
+            priority: this.getMatchPriority(cleanToken, prefix, normalizedPrefix)
+          });
+        } else {
+          // If we already have this word, prefer exact case match
+          const existing = matches.get(key);
+          const newPriority = this.getMatchPriority(cleanToken, prefix, normalizedPrefix);
+          if (newPriority < existing.priority) {
+            matches.set(key, {
+              token,
+              display: cleanToken || token,
+              priority: newPriority
+            });
+          }
+        }
       }
     }
 
-    return matches
+    return Array.from(matches.values())
       .sort((a, b) => {
-        // Sort by priority first, then by length
+        // Sort by priority first, then by length, then alphabetically
         if (a.priority !== b.priority) return a.priority - b.priority;
-        return a.display.length - b.display.length;
+        if (a.display.length !== b.display.length) return a.display.length - b.display.length;
+        return a.display.localeCompare(b.display);
       })
       .slice(0, maxResults);
+  }
+
+  // Helper function to determine match priority
+  getMatchPriority(cleanToken, originalPrefix, normalizedPrefix) {
+    // Exact case match gets highest priority
+    if (cleanToken === originalPrefix) return 0;
+    
+    // Exact case match but longer
+    if (cleanToken.startsWith(originalPrefix)) return 1;
+    
+    // Case-insensitive exact match
+    if (cleanToken.toLowerCase() === normalizedPrefix) return 2;
+    
+    // Case-insensitive prefix match
+    if (cleanToken.toLowerCase().startsWith(normalizedPrefix)) return 3;
+    
+    // Everything else
+    return 4;
   }
 
   // Clean token for display (remove space markers)

@@ -21,6 +21,8 @@ The app performs vector arithmetic on word embeddings:
 
 1. **Generate embeddings** (requires access to Mistral-7B model):
    ```bash
+   # Set your Hugging Face token (get one at https://huggingface.co/settings/tokens)
+   export HF_TOKEN=your_token_here
    python fetch-embedding.py
    ```
    This creates `public/embeddings.bin` and `public/metadata.json`
@@ -39,6 +41,21 @@ The app performs vector arithmetic on word embeddings:
    ```bash
    npm run build
    ```
+
+## GitHub Pages Deployment
+
+This project includes a GitHub Actions workflow for automatic deployment to GitHub Pages.
+
+**Setup:**
+1. In your GitHub repository, go to Settings > Secrets and variables > Actions
+2. Add a new repository secret named `HF_TOKEN` with your Hugging Face token
+3. Enable GitHub Pages in Settings > Pages, set source to "GitHub Actions"
+4. Push to main branch to trigger deployment
+
+The workflow will automatically:
+- Cache the Mistral model for faster builds
+- Generate embeddings using your HF token
+- Build and deploy the React app
 
 ## Examples
 

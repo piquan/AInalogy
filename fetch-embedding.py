@@ -15,15 +15,23 @@ SAVED_PT = Path("mistral-embedding.pt")
 
 @functools.cache
 def get_model():
-    if "COLAB_GPU" not in os.environ:
-        raise Exception("You don't want to run this at home.")
-    return transformers.AutoModelForCausalLM.from_pretrained(MODEL)
+    # Remove COLAB_GPU restriction for CI builds
+    print("Loading Mistral-7B model...")
+    return transformers.AutoModelForCausalLM.from_pretrained(
+        MODEL,
+        torch_dtype=torch.float32,  # Use float32 for consistency
+        device_map="cpu",  # Force CPU usage in CI
+        trust_remote_code=True
+    )
 
 @functools.cache
 def get_tokenizer():
-    if "COLAB_GPU" not in os.environ:
-        raise Exception("You don't want to run this at home.")
-    return transformers.AutoTokenizer.from_pretrained(MODEL)
+    # Remove COLAB_GPU restriction for CI builds
+    print("Loading Mistral-7B tokenizer...")
+    return transformers.AutoTokenizer.from_pretrained(
+        MODEL,
+        trust_remote_code=True
+    )
 
 @functools.cache
 def get_embedding():
@@ -81,15 +89,18 @@ def main():
     import json
     import numpy as np
     
+    print("Starting embedding extraction process...")
     all_dict = get_all()
     
     # Extract data
+    print("Extracting embedding data...")
     embedding = all_dict["embedding"]
     vocab = all_dict["vocab"]
     special_tokens = all_dict["special_tokens"]
     space_string = all_dict["space_string"]
     
     # Convert embedding to numpy float32 for compact storage
+    print("Converting embeddings to numpy format...")
     embedding_np = embedding.detach().cpu().numpy().astype(np.float32)
     
     # Create reverse vocab mapping (token_id -> string)
@@ -97,20 +108,28 @@ def main():
     
     # Filter out some special tokens that might be confusing for the demo
     # Keep only "normal" tokens that could be useful for analogies
+    print("Filtering vocabulary...")
     filtered_vocab = {}
     filtered_embeddings = []
     filtered_ids = []
     
     for token_id, token_str in reverse_vocab.items():
         # Skip tokens that are clearly not words
+        cleaned_token = token_str.strip(space_string)
         if (not token_str.startswith('<') and  # Skip <s>, </s>, <unk>, etc.
-            len(token_str.strip(space_string)) > 0 and  # Skip empty/whitespace
-            token_id < len(embedding_np)):  # Ensure we have embedding
+            len(cleaned_token) > 0 and  # Skip empty/whitespace
+            token_id < len(embedding_np) and  # Ensure we have embedding
+            # Additional filtering for better web demo
+            len(cleaned_token) <= 20 and  # Skip very long tokens
+            not any(char.isdigit() for char in cleaned_token[:3]) and  # Skip tokens starting with numbers
+            cleaned_token.replace('_', '').replace('-', '').replace('.', '').isalpha()  # Prefer alphabetic tokens
+            ):
             filtered_vocab[token_str] = len(filtered_ids)  # Reassign sequential IDs
             filtered_embeddings.append(embedding_np[token_id])
             filtered_ids.append(token_id)
     
     # Convert to numpy array
+    print("Creating final embedding matrix...")
     filtered_embeddings = np.array(filtered_embeddings, dtype=np.float32)
     
     print(f"Original vocab size: {len(vocab)}")
@@ -118,6 +137,7 @@ def main():
     print(f"Embedding shape: {filtered_embeddings.shape}")
     
     # Save embeddings as binary file (can be loaded as ArrayBuffer in JS)
+    print("Saving embedding files...")
     embeddings_path = Path("public/embeddings.bin")
     embeddings_path.parent.mkdir(exist_ok=True)
     filtered_embeddings.tobytes("C")  # Ensure C-contiguous
@@ -141,6 +161,7 @@ def main():
     print(f"Saved embeddings to {embeddings_path}")
     print(f"Saved metadata to {metadata_path}")
     print(f"Total size: {embeddings_path.stat().st_size / 1024 / 1024:.1f} MB")
+    print("Embedding extraction complete!")
 
 
 if __name__ == "__main__":

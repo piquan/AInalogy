@@ -21,13 +21,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Cache Mistral embeddings
+        uses: actions/cache@v3
+        with:
+          path: mistral-embedding.pt
+          key: mistral-7b-embeddings-v1
+          restore-keys: |
+            mistral-7b-embeddings-
+            
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+        
+      - name: Generate embeddings
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python fetch-embedding.py
+        
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
           
-      - name: Install dependencies
+      - name: Install Node dependencies
         run: npm ci
         
       - name: Build
