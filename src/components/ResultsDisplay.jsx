@@ -1,8 +1,25 @@
-import React from 'react'
 import { embeddingEngine } from '../embeddings'
+import LoadingSpinner from './LoadingSpinner'
+import PropTypes from 'prop-types'
 
-const ResultsDisplay = ({ result }) => {
+const ResultsDisplay = ({ result, isEmbeddingsLoading = false }) => {
   if (!result) {
+    if (isEmbeddingsLoading) {
+      return (
+        <div className="card bg-base-200 shadow-lg">
+          <div className="card-body">
+            <h2 className="card-title mb-4">Results</h2>
+            <div className="text-center py-8">
+              <LoadingSpinner />
+              <div className="text-base-content/50 mt-4">
+                Loading embeddings for analogy computation...
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    
     return (
       <div className="card bg-base-200 shadow-lg">
         <div className="card-body">
@@ -71,9 +88,9 @@ const ResultsDisplay = ({ result }) => {
         <div>
           <div className="text-sm text-base-content/60 mb-2">Top 10 candidates:</div>
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {results.map((result, index) => (
+            {results.map((resultItem, index) => (
               <div
-                key={result.token}
+                key={resultItem.token}
                 className={`flex justify-between items-center p-3 rounded-lg ${
                   index === 0 
                     ? 'bg-primary text-primary-content' 
@@ -85,11 +102,11 @@ const ResultsDisplay = ({ result }) => {
                     #{index + 1}
                   </div>
                   <div className="font-medium">
-                    {embeddingEngine.cleanToken(result.token)}
+                    {embeddingEngine.cleanToken(resultItem.token)}
                   </div>
                 </div>
                 <div className="text-sm opacity-75 font-mono">
-                  {(result.similarity * 100).toFixed(1)}%
+                  {(resultItem.similarity * 100).toFixed(1)}%
                 </div>
               </div>
             ))}
@@ -109,6 +126,23 @@ const ResultsDisplay = ({ result }) => {
       </div>
     </div>
   )
+}
+
+ResultsDisplay.propTypes = {
+  result: PropTypes.shape({
+    error: PropTypes.string,
+    missingTokens: PropTypes.arrayOf(PropTypes.string),
+    input: PropTypes.shape({
+      tokenA: PropTypes.string.isRequired,
+      tokenB: PropTypes.string.isRequired,
+      tokenC: PropTypes.string.isRequired,
+    }),
+    results: PropTypes.arrayOf(PropTypes.shape({
+      token: PropTypes.string.isRequired,
+      similarity: PropTypes.number.isRequired,
+    })),
+  }),
+  isEmbeddingsLoading: PropTypes.bool,
 }
 
 export default ResultsDisplay

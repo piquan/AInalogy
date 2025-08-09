@@ -18,36 +18,66 @@ export class EmbeddingEngine {
     this.vocab = null;
     this.reverseVocab = null;
     this.metadata = null;
-    this.isLoaded = false;
-    this.loadingPromise = null; // Cache the loading promise
+    this.isMetadataLoaded = false;
+    this.isFullyLoaded = false;
+    this.metadataLoadingPromise = null; // Cache the metadata loading promise
+    this.embeddingsLoadingPromise = null; // Cache the embeddings loading promise
+  }
+
+  async loadMetadata() {
+    // If already loaded, return immediately
+    if (this.isMetadataLoaded) {
+      console.log('Metadata already loaded, skipping duplicate load');
+      return;
+    }
+    
+    // If currently loading, return the existing promise
+    if (this.metadataLoadingPromise) {
+      console.log('Metadata already loading, waiting for existing promise');
+      return this.metadataLoadingPromise;
+    }
+
+    // Start loading and cache the promise
+    console.log('Starting metadata load...');
+    this.metadataLoadingPromise = this._doLoadMetadata();
+    
+    try {
+      await this.metadataLoadingPromise;
+    } finally {
+      // Clear the promise when done (success or failure)
+      this.metadataLoadingPromise = null;
+    }
   }
 
   async loadEmbeddings() {
     // If already loaded, return immediately
-    if (this.isLoaded) {
+    if (this.isFullyLoaded) {
       console.log('Embeddings already loaded, skipping duplicate load');
       return;
     }
     
     // If currently loading, return the existing promise
-    if (this.loadingPromise) {
+    if (this.embeddingsLoadingPromise) {
       console.log('Embeddings already loading, waiting for existing promise');
-      return this.loadingPromise;
+      return this.embeddingsLoadingPromise;
     }
+
+    // Ensure metadata is loaded first
+    await this.loadMetadata();
 
     // Start loading and cache the promise
     console.log('Starting embeddings load...');
-    this.loadingPromise = this._doLoadEmbeddings();
+    this.embeddingsLoadingPromise = this._doLoadEmbeddings();
     
     try {
-      await this.loadingPromise;
+      await this.embeddingsLoadingPromise;
     } finally {
       // Clear the promise when done (success or failure)
-      this.loadingPromise = null;
+      this.embeddingsLoadingPromise = null;
     }
   }
 
-  async _doLoadEmbeddings() {
+  async _doLoadMetadata() {
     try {
       // Load metadata (use relative path to work with Vite's base configuration)
       const metadataResponse = await fetch('./metadata.json');
@@ -59,6 +89,16 @@ export class EmbeddingEngine {
         Object.entries(this.vocab).map(([token, id]) => [id, token])
       );
 
+      this.isMetadataLoaded = true;
+      console.log(`Loaded metadata with ${Object.keys(this.vocab).length} tokens`);
+    } catch (error) {
+      console.error('Failed to load metadata:', error);
+      throw new Error(`Failed to load metadata: ${error.message}`);
+    }
+  }
+
+  async _doLoadEmbeddings() {
+    try {
       // Load embeddings binary data
       const embeddingsResponse = await fetch('./embeddings.bin');
       const arrayBuffer = await embeddingsResponse.arrayBuffer();
@@ -94,7 +134,7 @@ export class EmbeddingEngine {
         this.normalizedEmbeddings.push(this.normalizeVector(this.embeddings[i]));
       }
 
-      this.isLoaded = true;
+      this.isFullyLoaded = true;
       console.log(`Loaded ${vocabSize} embeddings of dimension ${embeddingDim} (${this.metadata.dtype})`);
       console.log('Pre-normalized embeddings for fast similarity calculation');
     } catch (error) {
@@ -105,7 +145,7 @@ export class EmbeddingEngine {
 
   // Get embedding vector for a token
   getEmbedding(token) {
-    if (!this.isLoaded) {
+    if (!this.isFullyLoaded) {
       throw new Error('Embeddings not loaded yet');
     }
 
@@ -265,7 +305,7 @@ export class EmbeddingEngine {
 
   // Get all tokens that start with a prefix (for autocomplete)
   getTokensWithPrefix(prefix, maxResults = 50) {
-    if (!this.isLoaded || !prefix) return [];
+    if (!this.isMetadataLoaded || !prefix) return [];
 
     const normalizedPrefix = prefix.toLowerCase();
     const spaceString = this.metadata.space_string;
@@ -353,7 +393,7 @@ export class EmbeddingEngine {
     // Look for exact matches first
     const variants = this.generateTokenVariants(word);
     for (const variant of variants) {
-      if (this.vocab.hasOwnProperty(variant)) {
+      if (Object.prototype.hasOwnProperty.call(this.vocab, variant)) {
         const hasSpacePrefix = variant.startsWith(spaceString);
         candidates.push({
           token: variant,

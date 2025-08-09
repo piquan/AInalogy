@@ -1,30 +1,49 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { embeddingEngine } from './embeddings'
 import AnalogyForm from './components/AnalogyForm'
 import ResultsDisplay from './components/ResultsDisplay'
-import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
-  const [isLoading, setIsLoading] = useState(true)
+  const [embeddingsLoading, setEmbeddingsLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [analogyResult, setAnalogyResult] = useState(null)
 
   useEffect(() => {
-    const loadEmbeddings = async () => {
+    const loadMetadata = async () => {
       try {
-        await embeddingEngine.loadEmbeddings()
-        setIsLoading(false)
+        await embeddingEngine.loadMetadata()
       } catch (error) {
         setLoadError(error.message)
-        setIsLoading(false)
       }
     }
 
+    const loadEmbeddings = async () => {
+      try {
+        await embeddingEngine.loadEmbeddings()
+        setEmbeddingsLoading(false)
+      } catch (error) {
+        setLoadError(error.message)
+        setEmbeddingsLoading(false)
+      }
+    }
+
+    // Load metadata first for immediate autocompletion
+    loadMetadata()
+    // Load embeddings in background for analogy computation
     loadEmbeddings()
   }, [])
 
   const handleAnalogySubmit = async ({ tokenA, tokenB, tokenC }) => {
     if (!tokenA || !tokenB || !tokenC) return
+
+    // Check if embeddings are loaded for analogy computation
+    if (embeddingsLoading) {
+      setAnalogyResult({
+        input: { tokenA, tokenB, tokenC },
+        error: "Embeddings are still loading. Please wait a moment and try again."
+      })
+      return
+    }
 
     try {
       const result = embeddingEngine.performAnalogy(tokenA, tokenB, tokenC)
@@ -40,14 +59,7 @@ function App() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-base-100 flex items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    )
-  }
-
+  // Show error state if there's a critical loading error
   if (loadError) {
     return (
       <div className="min-h-screen bg-base-100 flex items-center justify-center">
@@ -55,7 +67,7 @@ function App() {
           <div className="text-error text-xl mb-4">Failed to load embeddings</div>
           <div className="text-base-content/70">{loadError}</div>
           <div className="mt-4 text-sm text-base-content/50">
-            Make sure you've run the Python script to generate the embedding files.
+            Make sure you&apos;ve run the Python script to generate the embedding files.
           </div>
         </div>
       </div>
@@ -83,7 +95,7 @@ function App() {
             <h2 className="text-2xl font-semibold mb-4">How it works</h2>
             <p className="text-base-content/80 mb-4">
               This demo shows how word embeddings capture semantic relationships. 
-              Fill in the analogy form below with the pattern "A is to B as C is to ?"
+              Fill in the analogy form below with the pattern &quot;A is to B as C is to ?&quot;
             </p>
             <p className="text-base-content/80 mb-4">
               For example: <span className="font-mono bg-base-300 px-2 py-1 rounded">man : woman :: king : ?</span>
@@ -102,7 +114,10 @@ function App() {
           </div>
           
           <div>
-            <ResultsDisplay result={analogyResult} />
+            <ResultsDisplay 
+              result={analogyResult} 
+              isEmbeddingsLoading={embeddingsLoading}
+            />
           </div>
         </div>
 
