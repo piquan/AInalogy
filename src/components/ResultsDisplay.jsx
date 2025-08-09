@@ -48,6 +48,18 @@ const ResultsDisplay = ({ result, isEmbeddingsLoading = false }) => {
               )}
             </div>
           </div>
+          
+          {/* Performance timing for errors too */}
+          {result.executionTime && (
+            <div className="mt-4 text-xs text-base-content/60 text-center">
+              <div className="inline-flex items-center gap-2 bg-base-300 rounded-full px-3 py-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Error detected in {result.executionTime.toFixed(1)}ms
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -123,6 +135,18 @@ const ResultsDisplay = ({ result, isEmbeddingsLoading = false }) => {
             </div>
           </div>
         </div>
+
+        {/* Performance timing */}
+        {result.executionTime && (
+          <div className="mt-4 text-xs text-base-content/60 text-center">
+            <div className="inline-flex items-center gap-2 bg-base-300 rounded-full px-3 py-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Computed in {result.executionTime.toFixed(1)}ms
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -132,6 +156,7 @@ ResultsDisplay.propTypes = {
   result: PropTypes.shape({
     error: PropTypes.string,
     missingTokens: PropTypes.arrayOf(PropTypes.string),
+    executionTime: PropTypes.number,
     input: PropTypes.shape({
       tokenA: PropTypes.string.isRequired,
       tokenB: PropTypes.string.isRequired,

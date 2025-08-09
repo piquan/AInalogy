@@ -252,6 +252,8 @@ export class EmbeddingEngine {
   // Perform word analogy: a is to b as c is to ?
   // Returns the token most similar to (c + (b - a))
   performAnalogy(tokenA, tokenB, tokenC, topK = 10) {
+    const startTime = performance.now();
+    
     const embA = this.getEmbedding(tokenA);
     const embB = this.getEmbedding(tokenB);
     const embC = this.getEmbedding(tokenC);
@@ -263,7 +265,8 @@ export class EmbeddingEngine {
           !embA ? tokenA : null,
           !embB ? tokenB : null,
           !embC ? tokenC : null
-        ].filter(Boolean)
+        ].filter(Boolean),
+        executionTime: performance.now() - startTime
       };
     }
 
@@ -297,9 +300,12 @@ export class EmbeddingEngine {
     // Sort by similarity and return top K
     similarities.sort((a, b) => b.similarity - a.similarity);
     
+    const executionTime = performance.now() - startTime;
+    
     return {
       results: similarities.slice(0, topK),
-      targetVector: normalizedTarget
+      targetVector: normalizedTarget,
+      executionTime
     };
   }
 
