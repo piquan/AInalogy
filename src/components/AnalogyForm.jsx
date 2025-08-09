@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react'
+import { useState, useRef } from 'react'
+import PropTypes from 'prop-types'
 import { embeddingEngine } from '../embeddings'
 
 const TokenInput = ({ value, onChange, placeholder, onFocus, onBlur, disabled = false }) => {
@@ -118,6 +119,15 @@ const TokenInput = ({ value, onChange, placeholder, onFocus, onBlur, disabled = 
   )
 }
 
+TokenInput.propTypes = {
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  placeholder: PropTypes.string,
+  onFocus: PropTypes.func,
+  onBlur: PropTypes.func,
+  disabled: PropTypes.bool,
+}
+
 const AnalogyForm = ({ onSubmit }) => {
   const [tokenA, setTokenA] = useState('')
   const [tokenB, setTokenB] = useState('')
@@ -219,6 +229,10 @@ const AnalogyForm = ({ onSubmit }) => {
       </div>
     </div>
   )
+}
+
+AnalogyForm.propTypes = {
+  onSubmit: PropTypes.func.isRequired,
 }
 
 export default AnalogyForm
