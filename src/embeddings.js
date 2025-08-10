@@ -17,6 +17,7 @@ export class EmbeddingEngine {
     this.normalizedEmbeddings = null; // Pre-normalized for fast cosine similarity
     this.vocab = null;
     this.reverseVocab = null;
+    this.vocabEntries = null; // Pre-computed Object.entries(this.vocab) for performance
     this.metadata = null;
     this.isMetadataLoaded = false;
     this.isFullyLoaded = false;
@@ -84,9 +85,12 @@ export class EmbeddingEngine {
       this.metadata = await metadataResponse.json();
       this.vocab = this.metadata.vocab;
       
+      // Pre-compute vocab entries for fast iteration during similarity computation
+      this.vocabEntries = Object.entries(this.vocab);
+      
       // Create reverse vocab lookup
       this.reverseVocab = Object.fromEntries(
-        Object.entries(this.vocab).map(([token, id]) => [id, token])
+        this.vocabEntries.map(([token, id]) => [id, token])
       );
 
       this.isMetadataLoaded = true;
@@ -120,18 +124,30 @@ export class EmbeddingEngine {
       const vocabSize = this.metadata.vocab_size;
       const embeddingDim = this.metadata.embedding_dim;
       
+      // Create Float32Array views into the original data for embeddings
       this.embeddings = [];
       for (let i = 0; i < vocabSize; i++) {
         const start = i * embeddingDim;
         const end = start + embeddingDim;
-        this.embeddings.push(typedData.slice(start, end));
+        this.embeddings.push(typedData.subarray(start, end));
       }
 
       // Pre-normalize all embeddings for fast dot-product similarity
+      // Create a single contiguous buffer for normalized embeddings
       console.log('Normalizing embeddings for fast similarity calculation...');
+      const normalizedBuffer = new ArrayBuffer(vocabSize * embeddingDim * 4); // 4 bytes per float32
+      
+      // Create views into the normalized buffer and populate with normalized vectors
       this.normalizedEmbeddings = [];
       for (let i = 0; i < vocabSize; i++) {
-        this.normalizedEmbeddings.push(this.normalizeVector(this.embeddings[i]));
+        const byteOffset = i * embeddingDim * 4;
+        const view = new Float32Array(normalizedBuffer, byteOffset, embeddingDim);
+        
+        // Normalize the embedding and copy into the view
+        const normalized = this.normalizeVector(this.embeddings[i]);
+        view.set(normalized);
+        
+        this.normalizedEmbeddings.push(view);
       }
 
       this.isFullyLoaded = true;
@@ -283,27 +299,45 @@ export class EmbeddingEngine {
         inputVariants.add(variant);
       }
     }
+    
+    // Convert input token variants to indices for fast exclusion during iteration
+    const inputIndices = new Set();
+    for (const variant of inputVariants) {
+      const id = this.vocab[variant];
+      if (id !== undefined) {
+        inputIndices.add(id);
+      }
+    }
 
     // Find most similar tokens using fast dot product with normalized embeddings
     const similarities = [];
-    for (const [token, id] of Object.entries(this.vocab)) {
+    const vocabSize = this.normalizedEmbeddings.length;
+    
+    // Iterate by index instead of by token for better performance
+    for (let i = 0; i < vocabSize; i++) {
       // Skip input tokens and their variants
-      if (inputVariants.has(token)) {
+      if (inputIndices.has(i)) {
         continue;
       }
 
-      const normalizedEmbedding = this.normalizedEmbeddings[id];
+      const normalizedEmbedding = this.normalizedEmbeddings[i];
       const similarity = this.dotProduct(normalizedTarget, normalizedEmbedding);
-      similarities.push({ token, similarity });
+      similarities.push({ index: i, similarity });
     }
 
     // Sort by similarity and return top K
     similarities.sort((a, b) => b.similarity - a.similarity);
     
+    // Convert top K indices back to tokens
+    const topResults = similarities.slice(0, topK).map(({ index, similarity }) => ({
+      token: this.reverseVocab[index],
+      similarity
+    }));
+    
     const executionTime = performance.now() - startTime;
     
     return {
-      results: similarities.slice(0, topK),
+      results: topResults,
       targetVector: normalizedTarget,
       executionTime
     };
